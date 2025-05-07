@@ -1,2 +1,9 @@
 ---
 k3s_type: server
+node_name: k3s-server
+node_labels:
+  - "node-role.kubernetes.io/master=true"
+  - "node-role.kubernetes.io/control-plane=true"
+node_taints:
+  - "node-role.kubernetes.io/master=true:NoSchedule"
+  - "node-role.kubernetes.io/control-plane=true:NoSchedule"

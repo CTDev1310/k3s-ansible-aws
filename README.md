@@ -1,193 +1,128 @@
-# Build a Kubernetes cluster using K3s via Ansible
+# K3s Ansible AWS Setup
 
-Author: <https://github.com/itwars>  
-Current Maintainer: <https://github.com/dereknola>
+This repository contains Ansible playbooks and roles to set up a K3s Kubernetes cluster on AWS EC2 instances.
 
-Easily bring up a cluster on machines running:
+## Prerequisites
 
-- [X] Debian
-- [X] Ubuntu
-- [X] Raspberry Pi OS
-- [X] RHEL Family (CentOS, Redhat, Rocky Linux...)
-- [X] SUSE Family (SLES, OpenSUSE Leap, Tumbleweed...)
-- [X] ArchLinux
+- Ansible 8.0+ (ansible-core 2.15+) installed on your local machine
+- AWS EC2 instances (1 server, 1 agent) with Ubuntu installed
+- SSH access to the EC2 instances with a private key
+- Python 3.x installed on your local machine
 
-on processor architectures:
+## Setup
 
-- [X] x64
-- [X] arm64
-- [X] armhf
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/yourusername/k3s-ansible-aws.git
+   cd k3s-ansible-aws
+   ```
 
-## System requirements
+2. Update the inventory.yml file with your EC2 instance IPs:
+   ```yaml
+   k3s_cluster:
+     children:
+       server:
+         hosts:
+           k3s-server:
+             ansible_host: <EC2_SERVER_IP>
+       agent:
+         hosts:
+           k3s-agent:
+             ansible_host: <EC2_AGENT_IP>
+   ```
 
-The control node **must** have Ansible 8.0+ (ansible-core 2.15+)
+3. Update the SSH private key path in inventory.yml:
+   ```yaml
+   ansible_ssh_private_key_file: ~/.ssh/your-aws-key.pem
+   ```
 
-All managed nodes in inventory must have:
-- Passwordless SSH access
-- Root access (or a user with equivalent permissions) 
+4. Generate a secure token and encrypt it with ansible-vault:
+   ```bash
+   ./scripts/generate_token.sh
+   ```
+   You'll be prompted to create a vault password. Remember this password as you'll need it when running the playbooks.
 
-It is also recommended that all managed nodes disable firewalls and swap. See [K3s Requirements](https://docs.k3s.io/installation/requirements) for more information.
+5. Verify your setup:
+   ```bash
+   ansible-inventory --list -i inventory.yml
+   ```
 
-## Installation
+## Running the Playbook
 
-### With ansible-galaxy
-
-`k3s-ansible` is a Ansible collection and can be installed with the `ansible-galaxy` command:
-
-```console
-$ ansible-galaxy collection install git+https://github.com/k3s-io/k3s-ansible.git
-```
-
-### From source
-
-Alternatively to an installation with `ansible-galaxy`, the `k3s-ansible` repository can simply be cloned from github:
-
-```console
-$ git clone https://github.com/k3s-io/k3s-ansible.git
-$ cd k3s-ansible
-```
-
-## Usage
-
-First copy the sample inventory to `inventory.yml`.
-
-```bash
-cp inventory-sample.yml inventory.yml
-```
-
-If you have installed `k3s-ansible` with ansible-galaxy, you can grab the [inventory-sample.yml](./inventory-sample.yml) from github.
-
-Second edit the inventory file to match your cluster setup. For example:
-```bash
-k3s_cluster:
-  children:
-    server:
-      hosts:
-        192.16.35.11:
-    agent:
-      hosts:
-        192.16.35.12:
-        192.16.35.13:
-```
-
-If needed, you can also edit `vars` section at the bottom to match your environment.
-
-If multiple hosts are in the server group the playbook will automatically setup k3s in HA mode with embedded etcd.
-An odd number of server nodes is required (3,5,7). Read the [official documentation](https://docs.k3s.io/datastore/ha-embedded) for more information.
-
-Setting up a loadbalancer or VIP beforehand to use as the API endpoint is possible but not covered here.
-
-
-Start provisioning of the cluster using one of the following commands. The command to be used depends on whether you installed `k3s-ansible` with `ansible-galaxy` or if you run the playbook from within the cloned git repository:
-
-*Installed with ansible-galaxy*
+Run the playbook to set up the K3s cluster:
 
 ```bash
-ansible-playbook k3s.orchestration.site -i inventory.yml
+ansible-playbook playbooks/site.yml -i inventory.yml --ask-vault-pass
 ```
 
-*Running the playbook from inside the repository*
+This will:
+1. Prepare all nodes with prerequisites
+2. Install K3s server on the server node
+3. Install K3s agent on the agent node
 
-```bash
-ansible-playbook playbooks/site.yml -i inventory.yml
-```
+## Connecting to the K3s Cluster from Your Local Machine
 
-### Using an external database
+After the playbook completes successfully, follow these steps to connect to your K3s cluster:
 
-If an external database is preferred, this can be achieved by passing the `--datastore-endpoint` as an extra server argument as well as setting the `use_external_database` flag to true.
+1. Copy the kubeconfig from the server node to your local machine:
+   ```bash
+   mkdir -p ~/.kube
+   scp -i ~/.ssh/your-aws-key.pem ubuntu@<EC2_SERVER_IP>:/etc/rancher/k3s/k3s.yaml ~/.kube/config-k3s-aws
+   ```
 
-```bash
-k3s_cluster:
-  children:
-    server:
-      hosts:
-        192.16.35.11:
-        192.16.35.12:
-    agent:
-      hosts:
-        192.16.35.13:
+2. Update the server address in the kubeconfig file:
+   ```bash
+   sed -i 's/127.0.0.1/<EC2_SERVER_IP>/g' ~/.kube/config-k3s-aws
+   ```
 
-  vars:
-    use_external_database: true
-    extra_server_args: "--datastore-endpoint=postgres://username:password@hostname:port/database-name"
-```
+3. Set the KUBECONFIG environment variable:
+   ```bash
+   export KUBECONFIG=~/.kube/config-k3s-aws
+   ```
 
-The `use_external_database` flag is required when more than one server is defined, as otherwise an embedded etcd cluster will be created instead.
+4. Verify the connection:
+   ```bash
+   kubectl get nodes
+   ```
 
-The format of the datastore-endpoint parameter is dependent upon the datastore backend, please visit the [K3s datastore endpoint format](https://docs.k3s.io/datastore#datastore-endpoint-format-and-functionality) for details on the format and supported datastores.
+   You should see output similar to:
+   ```
+   NAME         STATUS   ROLES                       AGE     VERSION
+   k3s-server   Ready    control-plane,master        5m      v1.30.2+k3s1
+   k3s-agent    Ready    worker                      3m      v1.30.2+k3s1
+   ```
 
-## Upgrading
+## Additional Commands
 
-A playbook is provided to upgrade K3s on all nodes in the cluster. To use it, update `k3s_version` with the desired version in `inventory.yml` and run one of the following commands. Again, the syntax is slightly different depending on whether you installed `k3s-ansible` with `ansible-galaxy` or if you run the playbook from within the cloned git repository:
+- To view the encrypted token:
+  ```bash
+  ansible-vault view group_vars/vault.yml
+  ```
 
+- To edit the encrypted token:
+  ```bash
+  ansible-vault edit group_vars/vault.yml
+  ```
 
-*Installed with ansible-galaxy*
+- To upgrade the K3s cluster:
+  ```bash
+  ansible-playbook playbooks/upgrade.yml -i inventory.yml --ask-vault-pass
+  ```
 
-```bash
-ansible-playbook k3s.orchestration.upgrade -i inventory.yml
-```
+- To reset/uninstall the K3s cluster:
+  ```bash
+  ansible-playbook playbooks/reset.yml -i inventory.yml
+  ```
 
-*Running the playbook from inside the repository*
+## Troubleshooting
 
-```bash
-ansible-playbook playbooks/upgrade.yml -i inventory.yml
-```
+- If you encounter SSH connection issues, ensure your security groups allow SSH access from your IP.
+- If nodes cannot communicate, check that the security groups allow all traffic between the instances.
+- For more detailed logs, add `-v` to your ansible-playbook command.
 
-## Airgap Install
+## Security Considerations
 
-Airgap installation is supported via the `airgap_dir` variable. This variable should be set to the path of a directory containing the K3s binary and images. The release artifacts can be downloaded from the [K3s Releases](https://github.com/k3s-io/k3s/releases). You must download the appropriate images for you architecture (any of the compression formats will work).
-
-An example folder for an x86_64 cluster:
-```bash
-$ ls ./playbooks/my-airgap/
-total 248M
--rwxr-xr-x 1 $USER $USER  58M Nov 14 11:28 k3s
--rw-r--r-- 1 $USER $USER 190M Nov 14 11:30 k3s-airgap-images-amd64.tar.gz
-
-$ cat inventory.yml
-...
-airgap_dir: ./my-airgap # Paths are relative to the playbooks directory
-```
-
-Additionally, if deploying on a OS with SELinux, you will also need to download the latest [k3s-selinux RPM](https://github.com/k3s-io/k3s-selinux/releases/latest) and place it in the airgap folder.
-
-
-It is assumed that the control node has access to the internet. The playbook will automatically download the k3s install script on the control node, and then distribute all three artifacts to the managed nodes. 
-
-## Kubeconfig
-
-After successful bringup, the kubeconfig of the cluster is copied to the control node  and merged with `~/.kube/config` under the `k3s-ansible` context.
-Assuming you have [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) installed, you can confirm access to your **Kubernetes** cluster with the following:
-
-```bash
-kubectl config use-context k3s-ansible
-kubectl get nodes
-```
-
-If you wish for your kubeconfig to be copied elsewhere and not merged, you can set the `kubeconfig` variable in `inventory.yml` to the desired path.
-
-## Local Testing
-
-A Vagrantfile is provided that provision a 5 nodes cluster using Vagrant (LibVirt or Virtualbox as provider). To use it:
-
-```bash
-vagrant up
-```
-
-By default, each node is given 2 cores and 2GB of RAM and runs Ubuntu 20.04. You can customize these settings by editing the `Vagrantfile`.
-
-## Need More Features?
-
-This project is intended to provide a "vanilla" K3s install. If you need more features, such as:
-- Private Registry
-- Advanced Storage (Longhorn, Ceph, etc)
-- External Database
-- External Load Balancer or VIP
-- Alternative CNIs
-
-See these other projects:
-- https://github.com/PyratLabs/ansible-role-k3s
-- https://github.com/techno-tim/k3s-ansible
-- https://github.com/jon-stumpf/k3s-ansible
-- https://github.com/alexellis/k3sup
-- https://github.com/axivo/k3s-cluster
+- The token is encrypted with ansible-vault for security.
+- Always use private networks for your Kubernetes clusters when possible.
+- Restrict access to your EC2 instances using security groups.
+- Consider using AWS IAM roles for service accounts for better security.

@@ -1,1 +1,5 @@
-k3s__k8s_version: v1.26.5+k3s1
+---
+k3s_version: v1.30.2+k3s1
+systemd_dir: /etc/systemd/system
+k3s_server_location: /var/lib/rancher/k3s
+user_kubectl: true
