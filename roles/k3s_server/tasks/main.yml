@@ -154,6 +154,7 @@
             src: /etc/rancher/k3s/k3s.yaml
             dest: "{{ kubeconfig }}"
             flat: true
+          become: true
 
         - name: Change server address in kubeconfig on control node
           ansible.builtin.shell: |
