@@ -15,7 +15,7 @@ mkdir -p ~/.kube
 
 # Copy kubeconfig from server
 echo "Copying kubeconfig from server..."
-scp -i $SSH_KEY ubuntu@$SERVER_IP:/etc/rancher/k3s/k3s.yaml ~/.kube/config-k3s-aws
+ssh -i $SSH_KEY ubuntu@$SERVER_IP "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/config-k3s-aws
 
 # Update server address in kubeconfig
 echo "Updating server address in kubeconfig..."

@@ -20,7 +20,7 @@ k3s_cluster:
     cluster_context: k3s-aws
 
     # Optional vars
-    # extra_server_args: ""
+    extra_server_args: "--tls-san 54.179.59.102"
     # extra_agent_args: ""
     # cluster_context: k3s-ansible
     # api_port: 6443

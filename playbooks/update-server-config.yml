@@ -1,0 +1,20 @@
+---
+- name: Update K3s Server Configuration
+  hosts: server
+  become: true
+  tasks:
+    - name: Copy K3s service file
+      ansible.builtin.template:
+        src: "../roles/k3s_server/templates/k3s-single.service.j2"
+        dest: "/etc/systemd/system/k3s.service"
+        owner: root
+        group: root
+        mode: "0644"
+      register: service_file
+
+    - name: Restart K3s service
+      ansible.builtin.systemd:
+        name: k3s
+        daemon_reload: true
+        state: restarted
+      when: service_file.changed
